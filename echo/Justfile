@@ -1,0 +1,19 @@
+@serve:
+  ../maelstrom/maelstrom serve
+
+@test:
+  ../maelstrom/maelstrom test \
+    --workload echo \
+    --bin main.py \
+    --log-stderr \
+    --log-net-recv \
+    --log-net-send \
+    --node-count 1 \
+    --time-limit 1
+
+@validate:
+  ../maelstrom/maelstrom test \
+    --workload echo \
+    --bin main.py \
+    --node-count 1 \
+    --time-limit 10

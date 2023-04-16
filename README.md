@@ -35,7 +35,7 @@ This software is quad-licensed and downstream users are free to use any of the p
 | [Unlicense][5] | None         | :white_check_mark: Yes | OSI approved public domain dedication. **Questionable legal standing** |
 
 [1]: https://opensource.org/
-[2]: ./MIT.LICENSE
-[3]: ./BSD0.LICENSE
+[2]: ./MIT-LICENSE
+[3]: ./BSD0-LICENSE
 [4]: ./COPYING
 [5]: ./UNLICENSE

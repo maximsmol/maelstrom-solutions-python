@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from typing import Any, Literal
 
+from ..api.errors import TimeoutError_
+
 sys.path.append(str(Path(__file__).parent.parent))
 
 import asyncio
@@ -84,11 +86,15 @@ class Node(NodeBase):
         return CustomSyncOkPayload(my_messages=list(self.messages))
 
     async def sync_with(self, node_id: str):
-        data = await self.communicate(
-            CustomSyncOkPayload,
-            node_id,
-            CustomSyncPayload(my_length=len(self.messages)),
-        )
+        try:
+            data = await self.communicate(
+                CustomSyncOkPayload,
+                node_id,
+                CustomSyncPayload(my_length=len(self.messages)),
+                timeout=1,
+            )
+        except TimeoutError_:
+            return
 
         if data.my_messages is None:
             return

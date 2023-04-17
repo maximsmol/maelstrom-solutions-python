@@ -23,7 +23,7 @@ class Node(NodeBase):
         self.last_id = 0
 
     async def msg_init(self, msg: Message[InitPayload]) -> Reply[InitOkPayload]:
-        return msg.src, InitOkPayload()
+        return InitOkPayload()
 
     async def msg_generate(
         self, msg: Message[GeneratePayload]
@@ -37,7 +37,7 @@ class Node(NodeBase):
         res = f"{self.node_id}-{self.last_id}"
         self.last_id += 1
 
-        return msg.src, GenerateOkPayload(id=res)
+        return GenerateOkPayload(id=res)
 
 
 async def main():

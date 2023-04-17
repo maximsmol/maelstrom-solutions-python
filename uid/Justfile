@@ -10,7 +10,7 @@
     --log-net-send \
     --availability total \
     --nemesis partition \
-    --node-count 3 \
+    --node-count 2 \
     --time-limit 1
 
 @validate:

@@ -1,0 +1,24 @@
+@serve:
+  ../maelstrom/maelstrom serve
+
+@test:
+  ../maelstrom/maelstrom test \
+    --workload echo \
+    --bin main.py \
+    --log-stderr \
+    --log-net-recv \
+    --log-net-send \
+    --availability total \
+    --nemesis partition \
+    --node-count 3 \
+    --time-limit 1
+
+@validate:
+  ../maelstrom/maelstrom test \
+    --workload unique-ids \
+    --bin main.py \
+    --time-limit 30 \
+    --rate 1000 \
+    --node-count 3 \
+    --availability total \
+    --nemesis partition

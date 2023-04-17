@@ -7,8 +7,8 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 import asyncio
 from api import (
-    EchoPayload,
     GenerateOkPayload,
+    GeneratePayload,
     InitOkPayload,
     InitPayload,
     Message,
@@ -25,7 +25,9 @@ class Node(NodeBase):
     async def msg_init(self, msg: Message[InitPayload]) -> Reply[InitOkPayload]:
         return msg.src, InitOkPayload()
 
-    async def msg_generate(self, msg: Message[EchoPayload]) -> Reply[GenerateOkPayload]:
+    async def msg_generate(
+        self, msg: Message[GeneratePayload]
+    ) -> Reply[GenerateOkPayload]:
         # expected time to colision at 1000 IDs/s for 3 nodes:
         # 4 days (there are 1,056,964,608 unique floats between 0 and 1)
 

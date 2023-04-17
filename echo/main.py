@@ -20,10 +20,10 @@ from api import (
 
 class Node(NodeBase):
     async def msg_init(self, msg: Message[InitPayload]) -> Reply[InitOkPayload]:
-        return msg.src, InitOkPayload()
+        return InitOkPayload()
 
     async def msg_echo(self, msg: Message[EchoPayload]) -> Reply[EchoOkPayload]:
-        return msg.src, EchoOkPayload(echo=msg.body.echo)
+        return EchoOkPayload(echo=msg.body.echo)
 
 
 async def main():

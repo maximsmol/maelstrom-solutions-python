@@ -11,6 +11,13 @@ from api.errors import MaelstormError, MaelstormErrorCode, NotSupportedError
 
 _og_print = print
 
+PayloadBodyFieldPrimitive: TypeAlias = int | float | str | bool | None
+PayloadBodyField = (
+    PayloadBodyFieldPrimitive
+    | list[PayloadBodyFieldPrimitive]
+    | dict[str, PayloadBodyFieldPrimitive]
+)
+
 
 def print(*args, **kwargs):
     _og_print(*args, **kwargs, file=sys.stderr)
@@ -70,7 +77,7 @@ class Message(Generic[PayloadT]):
     body: PayloadT
 
 
-Reply: TypeAlias = tuple[str, PayloadT] | None
+Reply: TypeAlias = PayloadT | None
 
 # Workload: echo
 
@@ -78,13 +85,13 @@ Reply: TypeAlias = tuple[str, PayloadT] | None
 @dataclass(kw_only=True)
 class EchoPayload(Payload):
     type: Literal["echo"] = "echo"
-    echo: Any
+    echo: PayloadBodyField
 
 
 @dataclass(kw_only=True)
 class EchoOkPayload(Payload):
     type: Literal["echo_ok"] = "echo_ok"
-    echo: Any
+    echo: PayloadBodyField
 
 
 # Workload: unique-IDs
@@ -98,7 +105,7 @@ class GeneratePayload(Payload):
 @dataclass(kw_only=True)
 class GenerateOkPayload(Payload):
     type: Literal["generate_ok"] = "generate_ok"
-    id: Any
+    id: PayloadBodyField
 
 
 # Workload: broadcast
@@ -118,7 +125,7 @@ class TopologyOkPayload(Payload):
 @dataclass(kw_only=True)
 class BroadcastPayload(Payload):
     type: Literal["broadcast"] = "broadcast"
-    message: Any
+    message: PayloadBodyField
 
 
 @dataclass(kw_only=True)
@@ -134,7 +141,7 @@ class ReadPayload(Payload):
 @dataclass(kw_only=True)
 class ReadOkPayload(Payload):
     type: Literal["read_ok"] = "read_ok"
-    messages: list[Any]
+    messages: list[PayloadBodyField]
 
 
 # Node base
@@ -145,11 +152,12 @@ class NodeBase:
     stdout: asyncio.StreamWriter
     running: bool
 
-    node_id: str
+    node_id: str = None
     node_idx: int
     node_ids: list[str]
 
     last_msg_id: int = 0
+    receives_waiting: dict[int, tuple[asyncio.Event, Any]] = {}
 
     async def run(self):
         print("Setting up I/O")
@@ -164,18 +172,15 @@ class NodeBase:
             )
         }
 
-        print("Starting main loop")
-        while running:
+        async def process_line(line: bytes):
             try:
-                line = await self.stdin.readline()
-
                 data: Any
                 try:
                     data = json.loads(line)
                 except json.JSONDecodeError:
                     print("Failed to decode message:", line)
                     print(traceback.format_exc())
-                    continue
+                    return
 
                 try:
                     body = data["body"]
@@ -192,6 +197,18 @@ class NodeBase:
                             + (f": {body['text']}" if body["text"] is not None else "")
                         )
 
+                    in_reply_to = body.get("in_reply_to")
+                    rec = (
+                        self.receives_waiting.get(in_reply_to)
+                        if in_reply_to is not None
+                        else None
+                    )
+                    if rec is not None:
+                        self.receives_waiting[in_reply_to] = (rec[0], body)
+                        rec[0].set()
+
+                        return
+
                     handler = methods.get(type_)
                     if handler is None:
                         raise NotSupportedError(f"unknown message type: {type_}")
@@ -202,19 +219,31 @@ class NodeBase:
                     )
 
                     if reply is not None:
-                        reply_dest, reply_body = reply
-                        reply_body.in_reply_to = body["msg_id"]
-                        await self.send(reply_dest, reply_body)
+                        reply.in_reply_to = body["msg_id"]
+                        await self.send(data["src"], reply)
                 except MaelstormError as err:
                     print("!!! Internal error:", err)
                     await self.error(data["dest"], err.code, err.msg)
             except Exception:
                 print(traceback.format_exc())
+
+        print("Starting main loop")
+        while running:
+            try:
+                line = await self.stdin.readline()
+
+                asyncio.create_task(process_line(line))
+            except Exception:
+                print(traceback.format_exc())
                 continue
 
-    async def send(self, dest: str, body: Payload):
+    async def send(self, dest: str, body: Payload, *, msg_id: int | None = None):
         if not dest[0] == "c" and dest not in self.node_ids:
             raise ValueError("unknown destination:", dest)
+
+        if msg_id is None:
+            msg_id = self.last_msg_id
+            self.last_msg_id += 1
 
         data = {
             "src": self.node_id,
@@ -223,22 +252,38 @@ class NodeBase:
                 k: v for k, v in dataclasses.asdict(body).items() if v is not None
             },
         }
-        data["body"]["msg_id"] = self.last_msg_id
-
-        self.last_msg_id += 1
+        data["body"]["msg_id"] = msg_id
 
         x = json.dumps(data) + "\n"
         self.stdout.write(x.encode())
         await self.stdout.drain()
 
+    async def communicate(
+        self, res_cls: type[PayloadT], dest: str, body: Payload
+    ) -> PayloadT:
+        msg_id = self.last_msg_id
+        self.last_msg_id += 1
+
+        ev = asyncio.Event()
+        self.receives_waiting[msg_id] = (ev, None)
+
+        await self.send(dest, body, msg_id=msg_id)
+
+        await self.receives_waiting[msg_id][0].wait()
+
+        res_body = self.receives_waiting[msg_id][1]
+        del self.receives_waiting[msg_id]
+
+        return res_cls(**res_body)
+
     async def error(self, dest: str, code: MaelstormErrorCode, text: str | None = None):
         await self.send(dest, ErrorPayload(code=code.value, text=text))
 
     async def msg_init(self, msg: Message[InitPayload]) -> Reply[InitOkPayload]:
-        raise NotSupportedError()
+        return InitOkPayload()
 
     async def msg_error(self, msg: Message[ErrorPayload]) -> None:
-        raise NotSupportedError()
+        ...
 
     async def msg_echo(self, msg: Message[EchoPayload]) -> Reply[EchoOkPayload]:
         raise NotSupportedError()

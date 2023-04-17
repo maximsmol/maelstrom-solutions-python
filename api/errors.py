@@ -42,7 +42,7 @@ class MaelstormError(RuntimeError):
         self.msg = msg
 
 
-class TimeoutError(MaelstormError):
+class TimeoutError_(MaelstormError):
     def __init__(self, msg: str = ""):
         super().__init__(MaelstormErrorCode.timeout, msg)
 

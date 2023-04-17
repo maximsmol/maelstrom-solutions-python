@@ -31,7 +31,7 @@
     --log-stderr \
     --log-net-recv \
     --log-net-send \
-    --node-count 5 \
+    --node-count 2 \
     --time-limit 1 \
     --rate 10
 
@@ -52,7 +52,7 @@
     --log-stderr \
     --log-net-recv \
     --log-net-send \
-    --node-count 5 \
+    --node-count 2 \
     --time-limit 1 \
     --rate 10 \
     --nemesis partition
@@ -64,4 +64,50 @@
     --node-count 5 \
     --time-limit 20 \
     --rate 10 \
+    --nemesis partition
+
+# Stage 4
+
+@stage-4-test:
+  ../maelstrom/maelstrom test \
+    --workload broadcast \
+    --bin main.py \
+    --log-stderr \
+    --log-net-recv \
+    --log-net-send \
+    --node-count 2 \
+    --time-limit 1 \
+    --rate 100 \
+    --latency 100
+
+@stage-4-test-partition:
+  ../maelstrom/maelstrom test \
+    --workload broadcast \
+    --bin main.py \
+    --log-stderr \
+    --log-net-recv \
+    --log-net-send \
+    --node-count 2 \
+    --time-limit 1 \
+    --rate 100 \
+    --latency 100 \
+    --nemesis partition
+
+@stage-4-validate:
+  ../maelstrom/maelstrom test \
+    --workload broadcast \
+    --bin main.py \
+    --node-count 25 \
+    --time-limit 20 \
+    --rate 100 \
+    --latency 100
+
+@stage-4-validate-partition:
+  ../maelstrom/maelstrom test \
+    --workload broadcast \
+    --bin main.py \
+    --node-count 25 \
+    --time-limit 20 \
+    --rate 100 \
+    --latency 100 \
     --nemesis partition

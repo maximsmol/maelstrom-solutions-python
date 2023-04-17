@@ -7,7 +7,13 @@ import sys
 import traceback
 from typing import Any, Generic, Literal, TypeAlias, TypeVar, get_args
 
-from api.errors import MaelstormError, MaelstormErrorCode, NotSupportedError
+from api.errors import (
+    CrashError,
+    MaelstormError,
+    MaelstormErrorCode,
+    NotSupportedError,
+    TimeoutError_,
+)
 
 _og_print = print
 
@@ -148,11 +154,13 @@ class ReadOkPayload(Payload):
 
 
 class NodeBase:
+    handler_timeout: float = 5
+
     stdin: asyncio.StreamReader
     stdout: asyncio.StreamWriter
     running: bool
 
-    node_id: str = None
+    node_id: str
     node_idx: int
     node_ids: list[str]
 
@@ -177,52 +185,64 @@ class NodeBase:
                 data: Any
                 try:
                     data = json.loads(line)
-                except json.JSONDecodeError:
-                    print("Failed to decode message:", line)
-                    print(traceback.format_exc())
-                    return
+                except json.JSONDecodeError as e:
+                    raise RuntimeError(f"failed to decode message: {line}") from e
 
                 try:
-                    body = data["body"]
-                    del data["body"]
+                    try:
+                        body = data["body"]
+                        del data["body"]
 
-                    type_ = body["type"]
-                    if type_ == "init":
-                        self.node_id = body["node_id"]
-                        self.node_ids = body["node_ids"]
-                        self.node_idx = self.node_ids.index(self.node_id)
-                    elif type_ == "error":
-                        print(
-                            f"!!! Error ({body['code']})"
-                            + (f": {body['text']}" if body["text"] is not None else "")
+                        type_ = body["type"]
+                        if type_ == "init":
+                            self.node_id = body["node_id"]
+                            self.node_ids = body["node_ids"]
+                            self.node_idx = self.node_ids.index(self.node_id)
+                        elif type_ == "error":
+                            print(
+                                f"!!! Error ({body['code']})"
+                                + (
+                                    f": {body['text']}"
+                                    if body["text"] is not None
+                                    else ""
+                                )
+                            )
+
+                        in_reply_to = body.get("in_reply_to")
+                        rec = (
+                            self.receives_waiting.get(in_reply_to)
+                            if in_reply_to is not None
+                            else None
                         )
+                        if rec is not None:
+                            self.receives_waiting[in_reply_to] = (rec[0], body)
+                            rec[0].set()
 
-                    in_reply_to = body.get("in_reply_to")
-                    rec = (
-                        self.receives_waiting.get(in_reply_to)
-                        if in_reply_to is not None
-                        else None
-                    )
-                    if rec is not None:
-                        self.receives_waiting[in_reply_to] = (rec[0], body)
-                        rec[0].set()
+                            return
 
-                        return
+                        handler = methods.get(type_)
+                        if handler is None:
+                            raise NotSupportedError(f"unknown message type: {type_}")
 
-                    handler = methods.get(type_)
-                    if handler is None:
-                        raise NotSupportedError(f"unknown message type: {type_}")
+                        payload_cls = get_args(get_annotations(handler)["msg"])[0]
+                        try:
+                            reply: Reply[Payload] = await asyncio.wait_for(
+                                handler(Message(**data, body=payload_cls(**body))),
+                                self.handler_timeout,
+                            )
+                        except TimeoutError as e:
+                            raise TimeoutError_(f"handler timed out: {type_}") from e
+                        except Exception as e:
+                            raise CrashError(f"handler crashed: {type_}") from e
 
-                    payload_cls = get_args(get_annotations(handler)["msg"])[0]
-                    reply: Reply[Payload] = await handler(
-                        Message(**data, body=payload_cls(**body))
-                    )
-
-                    if reply is not None:
-                        reply.in_reply_to = body["msg_id"]
-                        await self.send(data["src"], reply)
+                        if reply is not None:
+                            reply.in_reply_to = body["msg_id"]
+                            await self.send(data["src"], reply)
+                    except Exception as e:
+                        raise CrashError() from e
                 except MaelstormError as err:
-                    print("!!! Internal error:", err)
+                    print(f"!!! Internal error ({err.code.name}):", err.msg)
+                    print(traceback.format_exc())
                     await self.error(data["dest"], err.code, err.msg)
             except Exception:
                 print(traceback.format_exc())
@@ -259,7 +279,12 @@ class NodeBase:
         await self.stdout.drain()
 
     async def communicate(
-        self, res_cls: type[PayloadT], dest: str, body: Payload
+        self,
+        res_cls: type[PayloadT],
+        dest: str,
+        body: Payload,
+        *,
+        timeout: float | None = None,
     ) -> PayloadT:
         msg_id = self.last_msg_id
         self.last_msg_id += 1
@@ -269,7 +294,10 @@ class NodeBase:
 
         await self.send(dest, body, msg_id=msg_id)
 
-        await self.receives_waiting[msg_id][0].wait()
+        try:
+            await asyncio.wait_for(self.receives_waiting[msg_id][0].wait(), timeout)
+        except TimeoutError as e:
+            raise TimeoutError_(f"reply timed out: {msg_id} ") from e
 
         res_body = self.receives_waiting[msg_id][1]
         del self.receives_waiting[msg_id]

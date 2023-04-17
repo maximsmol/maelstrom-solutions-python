@@ -3,7 +3,7 @@
 
 @test:
   ../maelstrom/maelstrom test \
-    --workload echo \
+    --workload unique-ids \
     --bin main.py \
     --log-stderr \
     --log-net-recv \

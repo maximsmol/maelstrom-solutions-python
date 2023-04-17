@@ -16,7 +16,7 @@ See [`/echo/main.py`](./echo/main.py) for an example
 
 ## Optional Tooling
 
-- [Conda (miniconda)](https://docs.conda.io/) for managing python installationsen/latest/miniconda.html
+- [Conda (miniconda)](https://docs.conda.io/) for installing Python and dependencies
 - [direnv](https://direnv.net/) for loading a Conda environment automatically
 - [Just](https://github.com/casey/just/) for running commands
 - [`dev-requirements.txt`](./dev-requirements.txt) lists formatters and linters recommended for development

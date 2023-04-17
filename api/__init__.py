@@ -86,6 +86,20 @@ class EchoOkPayload(Payload):
     echo: Any
 
 
+# Workload: unique-IDs
+
+
+@dataclass(kw_only=True)
+class GeneratePayload(Payload):
+    type: Literal["generate"] = "generate"
+
+
+@dataclass(kw_only=True)
+class GenerateOkPayload(Payload):
+    type: Literal["generate_ok"] = "generate_ok"
+    id: Any
+
+
 # Node base
 
 
@@ -139,6 +153,10 @@ class NodeBase:
                         reply = await self.msg_echo(
                             Message(**data, body=EchoPayload(**body))
                         )
+                    elif type_ == "generate":
+                        reply = await self.msg_generate(
+                            Message(**data, body=GeneratePayload(**body))
+                        )
                     else:
                         raise NotSupportedError(f"unknown message type: {type_}")
 
@@ -175,4 +193,9 @@ class NodeBase:
         raise NotSupportedError()
 
     async def msg_echo(self, msg: Message[EchoPayload]) -> Reply[EchoOkPayload]:
+        raise NotSupportedError()
+
+    async def msg_generate(
+        self, msg: Message[GeneratePayload]
+    ) -> Reply[GenerateOkPayload]:
         raise NotSupportedError()
